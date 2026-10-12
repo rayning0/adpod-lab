@@ -97,7 +97,7 @@ func TestGeneratedFixtureFiles(t *testing.T) {
 	}
 }
 
-func TestEvidenceScenarios(t *testing.T) {
+func TestProofScenarios(t *testing.T) {
 	_, candidates, groundTruth := Generate(Seed)
 	sameProductCreatives := map[string]bool{}
 	sameProductProducts := map[string]bool{}
@@ -108,12 +108,12 @@ func TestEvidenceScenarios(t *testing.T) {
 				t.Errorf("%s has no universal ID", candidate.CandidateID)
 			}
 		case ScenarioExactMedia:
-			if candidate.UniversalAdID != "" || candidate.MediaKey == "" || candidate.FixtureFingerprint != "" {
-				t.Errorf("%s does not have exact-media-only evidence", candidate.CandidateID)
+			if candidate.UniversalAdID != "" || candidate.MediaHash == "" || candidate.FixtureFingerprint != "" {
+				t.Errorf("%s does not have exact-media-only proof", candidate.CandidateID)
 			}
 		case ScenarioFingerprint:
-			if candidate.UniversalAdID != "" || candidate.MediaKey == "" || candidate.FixtureFingerprint == "" {
-				t.Errorf("%s does not have fingerprint evidence", candidate.CandidateID)
+			if candidate.UniversalAdID != "" || candidate.MediaHash == "" || candidate.FixtureFingerprint == "" {
+				t.Errorf("%s does not have fingerprint proof", candidate.CandidateID)
 			}
 		case ScenarioSameProduct:
 			if candidate.UniversalAdID != "" {
@@ -122,8 +122,8 @@ func TestEvidenceScenarios(t *testing.T) {
 			sameProductCreatives[groundTruth[candidate.CandidateID]] = true
 			sameProductProducts[candidate.ProductID] = true
 		case ScenarioInsufficient:
-			if candidate.UniversalAdID != "" || candidate.MediaKey != "" || candidate.FixtureFingerprint != "" {
-				t.Errorf("%s has identity evidence", candidate.CandidateID)
+			if candidate.UniversalAdID != "" || candidate.MediaHash != "" || candidate.FixtureFingerprint != "" {
+				t.Errorf("%s has identity proof", candidate.CandidateID)
 			}
 		default:
 			t.Errorf("%s has unknown scenario %q", candidate.CandidateID, candidate.Scenario)

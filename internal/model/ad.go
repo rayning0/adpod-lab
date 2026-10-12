@@ -9,7 +9,7 @@ package model
 // 	Source:             "amazon-aps",
 // 	SourceCreativeID:   "aps-creative-8472",
 // 	UniversalAdID:      "toyota-rav4-spring-30s-001",
-// 	MediaKey:           "sha256:toyota-rav4-30s-1080p-v1-001",
+// 	MediaHash:          "sha256:toyota-rav4-30s-1080p-v1-001",
 // 	FixtureFingerprint: "fp-toyota-rav4-30s-001",
 // 	AdvertiserID:       "toyota",
 // 	ProductID:          "rav4",
@@ -24,9 +24,9 @@ package model
 // SourceCreativeID is the identifier assigned by that source to the ad. It
 // may be different from the identifier assigned by another source.
 //
-// MediaKey identifies one exact media asset, usually with a cryptographic
-// file hash. Two byte-for-byte identical files have the same MediaKey, while
-// two differently transcoded files normally have different MediaKeys.
+// MediaHash identifies the exact bytes of one media file. Two byte-for-byte
+// identical files have the same MediaHash, while two differently transcoded
+// files normally have different MediaHashes.
 //
 // FixtureFingerprint is an opaque, precomputed identity signal used by this
 // project. It can represent a simulated audio fingerprint, video fingerprint,
@@ -38,7 +38,7 @@ type Candidate struct {
 	SourceCreativeID   string  `json:"source_creative_id"`
 	UniversalAdID      string  `json:"universal_ad_id,omitempty"`
 	MediaURL           string  `json:"media_url"`
-	MediaKey           string  `json:"media_key,omitempty"`
+	MediaHash          string  `json:"media_hash,omitempty"`
 	FixtureFingerprint string  `json:"fixture_fingerprint,omitempty"`
 	AdvertiserID       string  `json:"advertiser_id"`
 	ProductID          string  `json:"product_id"`

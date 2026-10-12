@@ -17,7 +17,7 @@ const (
 	ScenarioExactMedia   = "exact_media_hash"
 	ScenarioFingerprint  = "fixture_fingerprint"
 	ScenarioSameProduct  = "same_product_different_creative"
-	ScenarioInsufficient = "insufficient_identity_evidence"
+	ScenarioInsufficient = "insufficient_identity_proof"
 )
 
 type candidateSpec struct {
@@ -66,21 +66,23 @@ func Generate(seed int64) ([]model.Creative, []model.Candidate, map[string]strin
 		creative := catalog[spec.creative]
 		source := sources[i%len(sources)]
 		candidateID := fmt.Sprintf("candidate-%03d", i+1)
-		mediaKey := ""
+		mediaHash := ""
 		fingerprint := ""
 		universalID := ""
 		switch spec.scenario {
 		case ScenarioUniversal:
 			universalID = "synthetic-universal-" + creative.CreativeID
+			mediaHash = "sha256:universal-" + creative.CreativeID
 		case ScenarioExactMedia:
-			mediaKey = "sha256:exact-" + creative.CreativeID
+			mediaHash = "sha256:exact-" + creative.CreativeID
 		case ScenarioFingerprint:
-			mediaKey = fmt.Sprintf("sha256:transcode-%s-%03d", creative.CreativeID, i+1)
+			mediaHash = fmt.Sprintf("sha256:transcode-%s-%03d", creative.CreativeID, i+1)
 			fingerprint = "fixture-fingerprint-" + creative.CreativeID
 		case ScenarioSameProduct:
-			mediaKey = fmt.Sprintf("sha256:distinct-creative-%03d", i+1)
+			mediaHash = fmt.Sprintf("sha256:distinct-creative-%03d", i+1)
+			fingerprint = fmt.Sprintf("fixture-fingerprint-distinct-%03d", i+1)
 		case ScenarioInsufficient:
-			// No universal ID, exact hash, or fingerprint is intentional.
+			// No universal ID, exact media hash, or fingerprint is intentional.
 		}
 
 		candidates = append(candidates, model.Candidate{
@@ -89,7 +91,7 @@ func Generate(seed int64) ([]model.Creative, []model.Candidate, map[string]strin
 			SourceCreativeID:   fmt.Sprintf("%s-creative-%03d", source, i+1),
 			UniversalAdID:      universalID,
 			MediaURL:           fmt.Sprintf("https://media.invalid/%s/%s.mp4", source, candidateID),
-			MediaKey:           mediaKey,
+			MediaHash:          mediaHash,
 			FixtureFingerprint: fingerprint,
 			AdvertiserID:       creative.AdvertiserID,
 			ProductID:          creative.ProductID,
