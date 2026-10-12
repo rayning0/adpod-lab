@@ -165,6 +165,34 @@ func TestIncompletePodCancelsReservations(t *testing.T) {
 	}
 }
 
+func TestIncompletePodCancelsProtectedAndReplaceableReservations(t *testing.T) {
+	store := &fakeStore{}
+	protected := candidate("protected", 1, false)
+	req := request()
+	req.ProtectedCandidate = &protected.Candidate
+
+	_, err := (&Selector{FrequencyStore: store}).Select(req, []ResolvedCandidate{
+		protected,
+		candidate("a", 30, true),
+		candidate("b", 20, true),
+	})
+	if err == nil {
+		t.Fatal("expected incomplete pod error")
+	}
+	if len(store.reserves) != 3 {
+		t.Fatalf("created %d reservations, want 3", len(store.reserves))
+	}
+	wantCanceled := []string{"reservation-1", "reservation-2", "reservation-3"}
+	if len(store.cancels) != len(wantCanceled) {
+		t.Fatalf("canceled %d reservations, want %d", len(store.cancels), len(wantCanceled))
+	}
+	for i, want := range wantCanceled {
+		if store.cancels[i] != want {
+			t.Errorf("canceled reservation %d = %q, want %q", i, store.cancels[i], want)
+		}
+	}
+}
+
 func TestEqualCPMTiesUseCandidateID(t *testing.T) {
 	store := &fakeStore{}
 	result, err := (&Selector{FrequencyStore: store}).Select(request(), []ResolvedCandidate{
