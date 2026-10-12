@@ -85,6 +85,12 @@ This resolver should use proof in descending order of trust:
 `universal_ad_id` -> exact media proof -> `fixture_fingerprint` ->
 unknown. A source-local ID, advertiser, or product match does not mean 2 ads are the same.
 
+The fixture resolver loads `data/identity_registry.json`, a separate trusted
+mapping from opaque proof values to canonical IDs. It never derives an answer
+from a candidate's identifier text, and `data/ground_truth.json` is evaluation
+data only. This prevents the synthetic test data from leaking canonical IDs
+through strings such as `fingerprint-creative-003`.
+
 ### Scenarios the resolver must distinguish
 
 The current test fixtures keep the three identity signals separate. Check
@@ -105,6 +111,13 @@ For example, two Toyota RAV4 candidates can share `product_id: "rav4"` while
 mapping to different canonical creative IDs. They must not be deduplicated
 just because they advertise the same product. Conversely, two source-local
 Toyota IDs with different transcodes could still be the same ad if their trusted universal ad IDs or fixture fingerprints match.
+
+The 30-candidate fixture has 27 candidates with sufficient proof and three
+explicitly expected-unknown candidates. Its Toyota scenario is **four
+candidates spanning two distinct RAV4 commercials**: candidates 024/025 share
+one fingerprint and map to `creative-003`; 026/027 share another and map to
+`creative-004`. The two groups must remain distinct despite identical
+advertiser and product metadata.
 
 ## Decision flow
 
@@ -156,6 +169,7 @@ CPM is a bid rate, not per-impression revenue. Estimated gross revenue for a con
 ```text
 adpod-lab/
 ├── README.md
+├── data/{candidates,creatives,identity_registry,ground_truth}.json
 ├── go.mod
 ├── cmd/simulator/main.go
 ├── internal/
@@ -189,7 +203,7 @@ Both strategies use the same fixtures and seed.
 | Baseline | Source-local IDs | None | Highest CPM only |
 | Optimized | Canonical IDs when resolved | Shared in-process store | Deduplication, caps, and CPM-aware constraints |
 
-Report at least exact-creative repeat rate, intra-pod duplicate rate, frequency-cap violations, fill rate, confirmed estimated gross revenue, P95 decision latency, and identity resolution precision/recall against fixture ground truth.
+Report at least exact-creative repeat rate, intra-pod duplicate rate, frequency-cap violations, fill rate, confirmed estimated gross revenue, P95 decision latency, known-identity precision/recall, and expected-unknown handling. Do not count a deliberately unknowable candidate as a false negative.
 
 ## MVP limitations
 

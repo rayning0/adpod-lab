@@ -1,11 +1,7 @@
 // Package creative resolves source candidates to canonical commercial IDs.
 package creative
 
-import (
-	"strings"
-
-	"github.com/rgan/adpod-lab/internal/model"
-)
+import "github.com/rgan/adpod-lab/internal/model"
 
 // ResolutionMethod describes the proof used to resolve a candidate.
 type ResolutionMethod string
@@ -21,11 +17,7 @@ const (
 // IdentityRegistry contains trusted mappings from identity signals to
 // canonical creative IDs. In production these mappings would come from a
 // validated creative registry; the MVP uses synthetic fixture mappings.
-type IdentityRegistry struct {
-	UniversalIDs map[string]string
-	MediaHashes  map[string]string
-	Fingerprints map[string]string
-}
+type IdentityRegistry = model.IdentityRegistry
 
 // Resolver applies identity proof in descending order of trust.
 type Resolver struct {
@@ -35,44 +27,6 @@ type Resolver struct {
 // NewResolver creates a resolver using the supplied trusted identity maps.
 func NewResolver(registry IdentityRegistry) *Resolver {
 	return &Resolver{registry: registry}
-}
-
-// NewFixtureResolver builds a registry from the deterministic synthetic
-// fixtures. It deliberately only accepts signal values containing a known
-// catalog creative ID; advertiser, product, and source-local IDs are ignored.
-func NewFixtureResolver(candidates []model.Candidate, creatives []model.Creative) *Resolver {
-	creativeIDs := make(map[string]struct{}, len(creatives))
-	for _, creative := range creatives {
-		creativeIDs[creative.CreativeID] = struct{}{}
-	}
-
-	registry := IdentityRegistry{
-		UniversalIDs: make(map[string]string),
-		MediaHashes:  make(map[string]string),
-		Fingerprints: make(map[string]string),
-	}
-	for _, candidate := range candidates {
-		registerFixtureSignal(registry.UniversalIDs, candidate.UniversalAdID, creativeIDs)
-		// Only the exact-media fixture values are trusted as an exact-file
-		// mapping. Transcode hashes intentionally require fingerprint proof.
-		if strings.Contains(candidate.MediaHash, "sha256:exact-") {
-			registerFixtureSignal(registry.MediaHashes, candidate.MediaHash, creativeIDs)
-		}
-		registerFixtureSignal(registry.Fingerprints, candidate.FixtureFingerprint, creativeIDs)
-	}
-	return NewResolver(registry)
-}
-
-func registerFixtureSignal(index map[string]string, signal string, creativeIDs map[string]struct{}) {
-	if signal == "" {
-		return
-	}
-	for creativeID := range creativeIDs {
-		if strings.Contains(signal, creativeID) {
-			index[signal] = creativeID
-			return
-		}
-	}
 }
 
 // Resolve returns the best-supported canonical identity for candidate.
@@ -130,19 +84,34 @@ func (r *Resolver) ResolveAll(candidates []model.Candidate) []model.ResolvedCrea
 // ResolutionMetrics reports candidate-level precision and recall against
 // canonical IDs. Unresolved candidates count as false negatives.
 type ResolutionMetrics struct {
-	TruePositives  int
-	FalsePositives int
-	FalseNegatives int
-	Precision      float64
-	Recall         float64
+	TruePositives    int
+	FalsePositives   int
+	FalseNegatives   int
+	CorrectUnknowns  int
+	ExpectedUnknowns int
+	Precision        float64
+	Recall           float64
 }
 
 // Evaluate compares predictions with test-only ground truth.
-func Evaluate(predictions []model.ResolvedCreative, groundTruth map[string]string) ResolutionMetrics {
+func Evaluate(predictions []model.ResolvedCreative, groundTruth model.ResolutionExpectations) ResolutionMetrics {
 	var metrics ResolutionMetrics
+	expectedUnknown := make(map[string]bool, len(groundTruth.UnknownCandidateIDs))
+	for _, candidateID := range groundTruth.UnknownCandidateIDs {
+		expectedUnknown[candidateID] = true
+	}
 	for _, prediction := range predictions {
-		expected, known := groundTruth[prediction.CandidateID]
+		expected, known := groundTruth.Resolved[prediction.CandidateID]
+		if !known && !expectedUnknown[prediction.CandidateID] {
+			continue
+		}
 		if !known {
+			metrics.ExpectedUnknowns++
+			if prediction.CanonicalCreativeID == "" {
+				metrics.CorrectUnknowns++
+			} else {
+				metrics.FalsePositives++
+			}
 			continue
 		}
 		if prediction.CanonicalCreativeID == expected && prediction.CanonicalCreativeID != "" {

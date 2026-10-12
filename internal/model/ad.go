@@ -69,3 +69,20 @@ type ResolvedCreative struct {
 	Method              string  `json:"resolution_method"`
 	Confidence          float64 `json:"confidence"`
 }
+
+// IdentityRegistry is trusted resolver input that maps opaque identity proof
+// values to canonical creative IDs. It is deliberately separate from the
+// test-only evaluation expectations.
+type IdentityRegistry struct {
+	UniversalIDs map[string]string `json:"universal_ad_ids"`
+	MediaHashes  map[string]string `json:"media_hashes"`
+	Fingerprints map[string]string `json:"fingerprints"`
+}
+
+// ResolutionExpectations records test-only expected outcomes. A candidate
+// either has a canonical expected ID or is intentionally expected to remain
+// unresolved because the fixture supplies no trusted proof.
+type ResolutionExpectations struct {
+	Resolved            map[string]string `json:"resolved"`
+	UnknownCandidateIDs []string          `json:"unknown_candidate_ids"`
+}

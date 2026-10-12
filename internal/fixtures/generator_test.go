@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rgan/adpod-lab/internal/model"
@@ -32,10 +33,14 @@ func TestGeneratedFixtureFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	registry, err := model.LoadIdentityRegistryFile(filepath.Join(root, "identity_registry.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	if len(creatives) != 12 || len(candidates) != 30 || len(groundTruth) != 30 {
-		t.Fatalf("fixture sizes = creatives %d, candidates %d, ground truth %d; want 12, 30, 30",
-			len(creatives), len(candidates), len(groundTruth))
+	if len(creatives) != 12 || len(candidates) != 30 || len(groundTruth.Resolved) != 27 || len(groundTruth.UnknownCandidateIDs) != 3 {
+		t.Fatalf("fixture sizes = creatives %d, candidates %d, resolved %d, expected unknown %d; want 12, 30, 27, 3",
+			len(creatives), len(candidates), len(groundTruth.Resolved), len(groundTruth.UnknownCandidateIDs))
 	}
 	creativeIDs := make(map[string]bool, len(creatives))
 	for _, creative := range creatives {
@@ -77,7 +82,10 @@ func TestGeneratedFixtureFiles(t *testing.T) {
 		sourceMediaURLs[candidate.Source][candidate.MediaURL] = true
 		scenarioCounts[candidate.Scenario]++
 
-		expectedCreative, ok := groundTruth[candidate.CandidateID]
+		expectedCreative, ok := groundTruth.Resolved[candidate.CandidateID]
+		if candidate.Scenario == ScenarioInsufficient {
+			continue
+		}
 		if !ok || !creativeIDs[expectedCreative] {
 			t.Fatalf("ground truth missing or invalid for %s", candidate.CandidateID)
 		}
@@ -95,10 +103,20 @@ func TestGeneratedFixtureFiles(t *testing.T) {
 			t.Errorf("scenario %q count = %d, want %d", scenario, scenarioCounts[scenario], want)
 		}
 	}
+	if len(registry.UniversalIDs) != 9 || len(registry.MediaHashes) != 8 || len(registry.Fingerprints) != 8 {
+		t.Fatalf("registry sizes = universal %d, media %d, fingerprints %d; want 9, 8, 8", len(registry.UniversalIDs), len(registry.MediaHashes), len(registry.Fingerprints))
+	}
+	for _, candidate := range candidates {
+		for _, signal := range []string{candidate.UniversalAdID, candidate.MediaHash, candidate.FixtureFingerprint} {
+			if strings.Contains(signal, "creative-") {
+				t.Fatalf("candidate %s leaks a canonical ID in identity proof %q", candidate.CandidateID, signal)
+			}
+		}
+	}
 }
 
 func TestProofScenarios(t *testing.T) {
-	_, candidates, groundTruth := Generate(Seed)
+	_, candidates, _, groundTruth := Generate(Seed)
 	sameProductCreatives := map[string]bool{}
 	sameProductProducts := map[string]bool{}
 	for _, candidate := range candidates {
@@ -119,7 +137,7 @@ func TestProofScenarios(t *testing.T) {
 			if candidate.UniversalAdID != "" {
 				t.Errorf("%s unexpectedly has a universal ID", candidate.CandidateID)
 			}
-			sameProductCreatives[groundTruth[candidate.CandidateID]] = true
+			sameProductCreatives[groundTruth.Resolved[candidate.CandidateID]] = true
 			sameProductProducts[candidate.ProductID] = true
 		case ScenarioInsufficient:
 			if candidate.UniversalAdID != "" || candidate.MediaHash != "" || candidate.FixtureFingerprint != "" {
@@ -133,17 +151,23 @@ func TestProofScenarios(t *testing.T) {
 		t.Errorf("same-product scenario has %d creatives across %d products, want 2 creatives across 1 product",
 			len(sameProductCreatives), len(sameProductProducts))
 	}
+	if candidates[23].FixtureFingerprint != candidates[24].FixtureFingerprint ||
+		candidates[25].FixtureFingerprint != candidates[26].FixtureFingerprint ||
+		candidates[23].FixtureFingerprint == candidates[25].FixtureFingerprint {
+		t.Fatal("same-product candidates must form two fingerprint-linked, distinct creative pairs")
+	}
 }
 
 func generateJSON(t *testing.T, seed int64) []byte {
 	t.Helper()
-	creatives, candidates, groundTruth := Generate(seed)
+	creatives, candidates, registry, groundTruth := Generate(seed)
 	var buffer bytes.Buffer
 	if err := WriteJSON(&buffer, struct {
-		Creatives   []model.Creative  `json:"creatives"`
-		Candidates  []model.Candidate `json:"candidates"`
-		GroundTruth map[string]string `json:"ground_truth"`
-	}{creatives, candidates, groundTruth}); err != nil {
+		Creatives   []model.Creative             `json:"creatives"`
+		Candidates  []model.Candidate            `json:"candidates"`
+		Registry    model.IdentityRegistry       `json:"registry"`
+		GroundTruth model.ResolutionExpectations `json:"ground_truth"`
+	}{creatives, candidates, registry, groundTruth}); err != nil {
 		t.Fatal(err)
 	}
 	var value any
@@ -154,7 +178,7 @@ func generateJSON(t *testing.T, seed int64) []byte {
 }
 
 func TestGeneratedFilesAreCommitted(t *testing.T) {
-	for _, name := range []string{"creatives.json", "candidates.json", "ground_truth.json"} {
+	for _, name := range []string{"creatives.json", "candidates.json", "identity_registry.json", "ground_truth.json"} {
 		if _, err := os.Stat(filepath.Join("..", "..", "data", name)); err != nil {
 			t.Fatalf("missing generated fixture %s: %v", name, err)
 		}

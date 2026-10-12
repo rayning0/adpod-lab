@@ -26,7 +26,11 @@ func main() {
 		panic(err)
 	}
 
-	predictions := creative.NewFixtureResolver(candidates, creatives).ResolveAll(candidates)
+	registry, err := model.LoadIdentityRegistryFile(filepath.Join("data", "identity_registry.json"))
+	if err != nil {
+		panic(err)
+	}
+	predictions := creative.NewResolver(registry).ResolveAll(candidates)
 	metrics := creative.Evaluate(predictions, groundTruth)
 	methodCounts := make(map[string]int)
 	for _, prediction := range predictions {
@@ -40,6 +44,8 @@ func main() {
 		methodCounts[string(creative.MethodExactMedia)],
 		methodCounts[string(creative.MethodFingerprint)],
 		methodCounts[string(creative.MethodUnknown)]+methodCounts[string(creative.MethodConflict)])
-	fmt.Printf("resolver precision: %.2f, recall: %.2f (%d correct, %d unresolved/wrong)\n",
+	fmt.Printf("known-identity precision: %.2f, recall: %.2f (%d correct, %d missed/wrong)\n",
 		metrics.Precision, metrics.Recall, metrics.TruePositives, metrics.FalseNegatives)
+	fmt.Printf("expected-unknown handling: %d/%d correctly unresolved\n",
+		metrics.CorrectUnknowns, metrics.ExpectedUnknowns)
 }

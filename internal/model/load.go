@@ -58,20 +58,41 @@ func LoadCreativesFile(path string) ([]Creative, error) {
 	return LoadCreatives(file)
 }
 
-// LoadGroundTruth decodes the test/evaluation-only candidate mapping from r.
-func LoadGroundTruth(r io.Reader) (map[string]string, error) {
-	var groundTruth map[string]string
+// LoadIdentityRegistry decodes trusted resolver input from r.
+func LoadIdentityRegistry(r io.Reader) (IdentityRegistry, error) {
+	var registry IdentityRegistry
+	if err := json.NewDecoder(r).Decode(&registry); err != nil {
+		return IdentityRegistry{}, fmt.Errorf("decode identity registry: %w", err)
+	}
+	return registry, nil
+}
+
+func LoadIdentityRegistryFile(path string) (IdentityRegistry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return IdentityRegistry{}, fmt.Errorf("open identity registry fixture: %w", err)
+	}
+	defer file.Close()
+	return LoadIdentityRegistry(file)
+}
+
+// LoadGroundTruth decodes test-only evaluation expectations from r.
+func LoadGroundTruth(r io.Reader) (ResolutionExpectations, error) {
+	var groundTruth ResolutionExpectations
 	if err := json.NewDecoder(r).Decode(&groundTruth); err != nil {
-		return nil, fmt.Errorf("decode ground truth: %w", err)
+		return ResolutionExpectations{}, fmt.Errorf("decode ground truth: %w", err)
+	}
+	if groundTruth.Resolved == nil {
+		groundTruth.Resolved = map[string]string{}
 	}
 	return groundTruth, nil
 }
 
 // LoadGroundTruthFile decodes ground truth from path.
-func LoadGroundTruthFile(path string) (map[string]string, error) {
+func LoadGroundTruthFile(path string) (ResolutionExpectations, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("open ground truth fixture: %w", err)
+		return ResolutionExpectations{}, fmt.Errorf("open ground truth fixture: %w", err)
 	}
 	defer file.Close()
 	return LoadGroundTruth(file)

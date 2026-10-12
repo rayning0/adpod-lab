@@ -14,7 +14,7 @@ func main() {
 	outputDir := flag.String("output", "data", "directory for generated fixtures")
 	flag.Parse()
 
-	creatives, candidates, groundTruth := fixtures.Generate(*seed)
+	creatives, candidates, registry, groundTruth := fixtures.Generate(*seed)
 	if err := os.MkdirAll(*outputDir, 0o755); err != nil {
 		fail(err)
 	}
@@ -30,6 +30,7 @@ func main() {
 	}
 	write("creatives.json", creatives)
 	write("candidates.json", candidates)
+	write("identity_registry.json", registry)
 	write("ground_truth.json", groundTruth)
 	fmt.Printf("generated %d creatives and %d candidates in %s (seed=%d)\n", len(creatives), len(candidates), *outputDir, *seed)
 }

@@ -1,6 +1,7 @@
 package creative
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/rgan/adpod-lab/internal/model"
@@ -22,6 +23,27 @@ func TestResolveProofPrecedence(t *testing.T) {
 	got := resolver.Resolve(candidate)
 	if got.CanonicalCreativeID != "creative-1" || got.Method != string(MethodUniversalID) || got.Confidence != 1 {
 		t.Fatalf("Resolve() = %+v, want universal-ID resolution", got)
+	}
+}
+
+func TestFixtureRegistryResolvesKnownCandidatesAndAbstainsFromExpectedUnknowns(t *testing.T) {
+	root := filepath.Join("..", "..", "data")
+	candidates, err := model.LoadCandidatesFile(filepath.Join(root, "candidates.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := model.LoadIdentityRegistryFile(filepath.Join(root, "identity_registry.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectations, err := model.LoadGroundTruthFile(filepath.Join(root, "ground_truth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	metrics := Evaluate(NewResolver(registry).ResolveAll(candidates), expectations)
+	if metrics.TruePositives != 27 || metrics.FalsePositives != 0 || metrics.FalseNegatives != 0 ||
+		metrics.CorrectUnknowns != 3 || metrics.ExpectedUnknowns != 3 {
+		t.Fatalf("fixture metrics = %+v, want 27 correct known resolutions and 3 correct unknowns", metrics)
 	}
 }
 
@@ -98,22 +120,24 @@ func TestResolveConflictingProofIsUnknown(t *testing.T) {
 	}
 }
 
-func TestFixtureResolverMatchesGroundTruth(t *testing.T) {
-	creatives := []model.Creative{
-		{CreativeID: "creative-001"},
-		{CreativeID: "creative-002"},
-	}
+func TestEvaluateSeparatesExpectedUnknowns(t *testing.T) {
 	candidates := []model.Candidate{
-		{CandidateID: "u", UniversalAdID: "synthetic-universal-creative-001"},
-		{CandidateID: "m", MediaHash: "sha256:exact-creative-002"},
-		{CandidateID: "f", MediaHash: "sha256:transcode-creative-001-3", FixtureFingerprint: "fixture-fingerprint-creative-001"},
+		{CandidateID: "u", UniversalAdID: "u-opaque"},
+		{CandidateID: "m", MediaHash: "m-opaque"},
+		{CandidateID: "f", MediaHash: "different-bytes", FixtureFingerprint: "f-opaque"},
 		{CandidateID: "x", MediaHash: "sha256:unknown"},
 	}
-	predictions := NewFixtureResolver(candidates, creatives).ResolveAll(candidates)
-	metrics := Evaluate(predictions, map[string]string{
-		"u": "creative-001", "m": "creative-002", "f": "creative-001", "x": "creative-002",
+	predictions := NewResolver(IdentityRegistry{
+		UniversalIDs: map[string]string{"u-opaque": "creative-001"},
+		MediaHashes:  map[string]string{"m-opaque": "creative-002"},
+		Fingerprints: map[string]string{"f-opaque": "creative-001"},
+	}).ResolveAll(candidates)
+	metrics := Evaluate(predictions, model.ResolutionExpectations{
+		Resolved:            map[string]string{"u": "creative-001", "m": "creative-002", "f": "creative-001"},
+		UnknownCandidateIDs: []string{"x"},
 	})
-	if metrics.TruePositives != 3 || metrics.FalseNegatives != 1 || metrics.Precision != 1 || metrics.Recall != 0.75 {
-		t.Fatalf("metrics = %+v, want 3 TP, 1 FN, precision 1, recall .75", metrics)
+	if metrics.TruePositives != 3 || metrics.FalseNegatives != 0 || metrics.CorrectUnknowns != 1 ||
+		metrics.ExpectedUnknowns != 1 || metrics.Precision != 1 || metrics.Recall != 1 {
+		t.Fatalf("metrics = %+v, want three known resolutions and one correct unknown", metrics)
 	}
 }
