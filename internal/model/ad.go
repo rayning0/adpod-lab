@@ -4,20 +4,20 @@ package model
 //
 // Example:
 //
-//	Candidate{
-//		CandidateID:        "amazon-aps-candidate-001",
-//		Source:             "amazon-aps",
-//		SourceCreativeID:   "aps-creative-8472",
-//		UniversalAdID:      "toyota-rav4-spring-30s-001",
-//		MediaKey:           "sha256:toyota-rav4-30s-1080p-v1-001",
-//		FixtureFingerprint: "fp-toyota-rav4-30s-001",
-//		AdvertiserID:       "toyota",
-//		ProductID:          "rav4",
-//		DurationSeconds:    30,
-//		CPM:                28.50,
-//		InventoryOwner:     "simulated",
-//		Replaceable:        true,
-//	}
+// Candidate{
+// 	CandidateID:        "amazon-aps-candidate-001",
+// 	Source:             "amazon-aps",
+// 	SourceCreativeID:   "aps-creative-8472",
+// 	UniversalAdID:      "toyota-rav4-spring-30s-001",
+// 	MediaKey:           "sha256:toyota-rav4-30s-1080p-v1-001",
+// 	FixtureFingerprint: "fp-toyota-rav4-30s-001",
+// 	AdvertiserID:       "toyota",
+// 	ProductID:          "rav4",
+// 	DurationSeconds:    30,
+// 	CPM:                28.50,
+// 	InventoryOwner:     "simulated",
+// 	Replaceable:        true,
+// }
 //
 // Source is the demand source or ad-system partner that supplied the offer;
 // it is not the advertiser. AdvertiserID identifies Toyota in this example.
@@ -37,6 +37,7 @@ type Candidate struct {
 	Source             string  `json:"source"`
 	SourceCreativeID   string  `json:"source_creative_id"`
 	UniversalAdID      string  `json:"universal_ad_id,omitempty"`
+	MediaURL           string  `json:"media_url"`
 	MediaKey           string  `json:"media_key,omitempty"`
 	FixtureFingerprint string  `json:"fixture_fingerprint,omitempty"`
 	AdvertiserID       string  `json:"advertiser_id"`
@@ -45,6 +46,7 @@ type Candidate struct {
 	CPM                float64 `json:"cpm"`
 	InventoryOwner     string  `json:"inventory_owner"`
 	Replaceable        bool    `json:"replaceable"`
+	Scenario           string  `json:"fixture_scenario"`
 }
 
 // ResolvedCreative records the canonical identity inferred for a candidate.

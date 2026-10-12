@@ -1,0 +1,110 @@
+[
+  {
+    "creative_id": "creative-001",
+    "title": "Big Mac - The Original",
+    "advertiser_id": "mcdonalds",
+    "advertiser_name": "McDonald's",
+    "product_id": "big-mac",
+    "product_name": "Big Mac",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-002",
+    "title": "Big Mac - Made for Sharing",
+    "advertiser_id": "mcdonalds",
+    "advertiser_name": "McDonald's",
+    "product_id": "big-mac",
+    "product_name": "Big Mac",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-003",
+    "title": "RAV4 - Go Places",
+    "advertiser_id": "toyota",
+    "advertiser_name": "Toyota",
+    "product_id": "rav4",
+    "product_name": "RAV4",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-004",
+    "title": "RAV4 - Ready for More",
+    "advertiser_id": "toyota",
+    "advertiser_name": "Toyota",
+    "product_id": "rav4",
+    "product_name": "RAV4",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-005",
+    "title": "iPhone - Shot on iPhone",
+    "advertiser_id": "apple",
+    "advertiser_name": "Apple",
+    "product_id": "iphone",
+    "product_name": "iPhone",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-006",
+    "title": "iPhone - Your Next Chapter",
+    "advertiser_id": "apple",
+    "advertiser_name": "Apple",
+    "product_id": "iphone",
+    "product_name": "iPhone",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-007",
+    "title": "Air Max - Move to Zero",
+    "advertiser_id": "nike",
+    "advertiser_name": "Nike",
+    "product_id": "air-max",
+    "product_name": "Air Max",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-008",
+    "title": "Air Max - Find Your Fast",
+    "advertiser_id": "nike",
+    "advertiser_name": "Nike",
+    "product_id": "air-max",
+    "product_name": "Air Max",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-009",
+    "title": "Coca-Cola - Open Happiness",
+    "advertiser_id": "coca-cola",
+    "advertiser_name": "Coca-Cola",
+    "product_id": "coca-cola",
+    "product_name": "Coca-Cola",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-010",
+    "title": "Coca-Cola - Share a Coke",
+    "advertiser_id": "coca-cola",
+    "advertiser_name": "Coca-Cola",
+    "product_id": "coca-cola",
+    "product_name": "Coca-Cola",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-011",
+    "title": "Disney+ - Stories for Everyone",
+    "advertiser_id": "disney",
+    "advertiser_name": "Disney+",
+    "product_id": "disney-plus",
+    "product_name": "Disney+",
+    "duration_seconds": 30
+  },
+  {
+    "creative_id": "creative-012",
+    "title": "Disney+ - Every Story Starts Here",
+    "advertiser_id": "disney",
+    "advertiser_name": "Disney+",
+    "product_id": "disney-plus",
+    "product_name": "Disney+",
+    "duration_seconds": 30
+  }
+]
