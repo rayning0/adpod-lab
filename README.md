@@ -1,4 +1,4 @@
-# AdPod Lab: Intelligent CTV Ad-Pod Optimization
+# AdPod Lab: Intelligent CTV Ad Pod Optimization
 ### by Raymond Gan
 
 AdPod Lab is a Go-based CTV ad-decisioning simulation. It finds ad identity across fragmented demand sources, constructs revenue-aware ad pods, and applies household frequency caps to reduce ad repetition.
@@ -41,7 +41,7 @@ No Docker, Redis, external exchange, video processing, or streaming integration 
                 Creative Identity Resolver
                            |
                            v
-                  Ad-Pod Decision Engine
+                  Ad Pod Decision Engine
         (eligibility, deduplication, CPM selection)
                            |
                            v
