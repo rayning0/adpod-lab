@@ -20,12 +20,13 @@ The simulator reports its tradeoffs rather than assuming them. Results are gener
 | Capability | Two-day MVP |
 |---|---|
 | Runtime | Go and the standard library |
-| Candidate input | JSON fixtures and simulated [VAST 3.0](https://www.iab.com/wp-content/uploads/2015/06/VASTv3_0.pdf) responses |
+| Candidate input | JSON candidate, creative, and identity fixtures |
 | Identity resolution | Synthetic UniversalAdId/ACIF-style metadata, exact media hash, and fingerprint fixtures |
 | Frequency state | In-memory `map` protected by `sync.Mutex` |
 | Concurrency | Atomic reserve, confirm, and cancel operations within one process |
-| Simulation | Seeded, reproducible baseline-versus-optimized runs |
-| Verification | Go unit tests, including concurrent reservation tests |
+| Simulation | Seeded viewing events, playback outcomes, and isolated baseline-versus-optimized replays |
+| Metrics | Selection, settlement, revenue, fill, duplicate, and canonical cap metrics |
+| Verification | Unit tests plus `go test -race ./...` |
 
 No Docker, Redis, external exchange, video processing, or streaming integration is required to build or run the MVP.
 
@@ -35,14 +36,14 @@ No Docker, Redis, external exchange, video processing, or streaming integration 
                 Seeded Viewing Simulator
                            |
                            v
-             JSON Fixtures / VAST 3.0 Candidates
+             JSON Candidate Fixtures
                            |
                            v
                 Creative Identity Resolver
                            |
                            v
-                  Ad Pod Decision Engine
-        (eligibility, deduplication, CPM selection)
+                Ad Pod Decision Engine
+        (protected inventory, CPM selection, deduplication)
                            |
                            v
             In-Memory FrequencyStore Interface
@@ -59,6 +60,12 @@ No Docker, Redis, external exchange, video processing, or streaming integration 
 ```
 
 The frequency store is accessed only through an interface. This keeps the optimizer independent of storage and makes a later shared-state implementation a contained change.
+
+The simulator generates one immutable event stream, then replays it through
+two fresh stores. The baseline uses device-scoped, source-local keys and the
+optimized strategy uses household-scoped canonical keys. Both strategies use
+the same reservation lifecycle, injected simulated clock, candidate pool, and
+playback outcomes.
 
 ```go
 type FrequencyStore interface {
@@ -120,13 +127,13 @@ advertiser and product metadata.
 
 ## Decision flow
 
-1. Load candidates from JSON/[VAST 3.0](https://www.iab.com/wp-content/uploads/2015/06/VASTv3_0.pdf) fixtures.
-2. Resolve each candidate to a canonical creative if enough proof.
-3. Exclude ineligible candidates and respect protected inventory.
-4. Reserve capacity for eligible household/creative pairs.
-5. Select the highest-value valid candidates for the pod without avoidable exact-creative duplicates.
-6. Cancel reservations for candidates not selected or for incomplete pods.
-7. Confirm only impressions marked as shown; cancellation and confirmation are safe to retry.
+1. Load the fixed 30-candidate catalog and trusted identity registry.
+2. Generate a deterministic viewing timeline from the supplied seed.
+3. Resolve candidates without consulting evaluation-only ground truth.
+4. Replay the same timeline independently for the baseline and optimized strategies.
+5. Reserve capacity, select a protected 120-second pod, and settle each slot.
+6. Apply cancellations and confirmations at their simulated timestamps.
+7. Evaluate canonical duplicates and cap violations afterward using ground truth.
 
 CPM is a bid rate, not per-impression revenue. Estimated gross revenue for a confirmed impression is `CPM / 1000`.
 
@@ -143,8 +150,9 @@ CPM is a bid rate, not per-impression revenue. Estimated gross revenue for a con
 | Household caps | Rolling-window state across simulated channels and devices |
 | Atomic reservations | `map` + `sync.Mutex`, reservation TTLs, confirmation, and cancellation |
 | Pod selection | Greedy CPM-aware selection subject to duration and inventory constraints |
-| Reproducible simulator | Fixed seed, baseline and optimized strategies, shared input scenario |
-| Metrics and tests | Repeat, fill, revenue, latency, cap, and identity metrics |
+| Reproducible simulator | Fixed seed, immutable event stream, isolated strategy replays |
+| Playback lifecycle | Confirmed, canceled, delayed, and expired reservations |
+| Metrics and tests | Settlement, fill, revenue, duplicate, cap, identity, and determinism metrics |
 
 ### P1 — after the MVP
 
@@ -175,14 +183,9 @@ adpod-lab/
 │   ├── creative/resolver.go
 │   ├── frequency/{store.go,memory.go}
 │   ├── model/
-│   ├── optimizer/
-│   ├── simulator/
-│   └── metrics/
-├── testdata/
-│   ├── candidates.json
-│   ├── creatives.json
-│   └── vast3/
-├── scripts/generate_fixtures.go
+│   ├── pod/selector.go
+│   └── simulator/{simulator.go,simulator_test.go}
+├── cmd/generate-fixtures/main.go
 └── ..._test.go
 ```
 
@@ -192,92 +195,81 @@ There is no Dockerfile, Compose file, Redis client, or service dependency in the
 
 ```bash
 go test ./...
-go run ./cmd/simulator -seed 20261011
+go test -race ./...
+go run ./cmd/simulator \
+  -seed 20261011 \
+  -households 20 \
+  -devices 3 \
+  -channels 5 \
+  -minutes 120
 ```
 
-Both strategies use the same fixtures and seed.
+The default run uses 20 households, up to three devices per household, five
+channels, and two simulated hours. Use `-households 100` to run the larger
+scenario. The seed controls viewing behavior and playback outcomes; the
+committed candidate fixtures remain the shared inventory for both strategies.
 
 ### Sample simulator output:
 
 ```text
 AdPod Lab Simulator
-  Seed:               20261011
-  Creatives (unique): 12
-  Candidates:         30
+  Seed: 20261011  Households: 20  Devices: <=3  Channels: 5  Minutes: 120
+  Candidates: 30  Events: 1944
 
-Resolved Identities for Candidates:
-  Universal Ad IDs:          9
-  Exact Media Hash:          8
-  Audio/Video Fingerprint:  10
-  Unknown:                   3
-Identity resolution outcomes:
-  Correct resolved known identities:     27
-  Correct resolved unknowns:              3
-  Missed known identities:                0
-  Wrong resolved unknowns:                0
-  Wrong identity assignments:             0
-
-Candidates:       30
-Household:        household-001
-Pod duration:     120 seconds
-Frequency cap:    3 impressions/hour (per household, per canonical creative)
-
-Ads selected for pod:
-  Slot 1: candidate-030 unresolved     CPM $22.55   Non-Replaceable
-  Slot 2: candidate-027 creative-004   CPM $39.03
-  Slot 3: candidate-011 creative-003   CPM $38.06
-  Slot 4: candidate-007 creative-002   CPM $37.55
-
-Reservations confirmed:   4
-Selected duration:        120 / 120 seconds
-Avoidable duplicates:     0 ads repeated in pod
-Frequency cap violations: 0 selected ads in pod would exceed cap
-Estimated revenue:        $0.1372
+Metric                                       baseline      optimized
+Processed breaks                                  361            361
+Ad opportunities                                 1444           1444
+Selected ads                                     1444           1332
+Confirmed impressions                            1222           1117
+Canceled impressions                              151            146
+Delayed confirmations                              62             58
+Expired/unknown settlements                        71             69
+Incomplete pods                                     0             28
+Intra-pod duplicates                              226              0
+Frequency-cap violations                          613              0
+Estimated revenue                            $48.8221       $41.4609
+Confirmed revenue                            $41.1716       $34.6367
+Fill rate                                     100.00%         92.24%
+Unresolved identities                               3              3
 ```
 
 ### Output terms:
 
 - `Seed`: fixed value that makes generated simulation choices reproducible.
-- `Creatives (unique)`: distinct canonical creative definitions in the catalog.
-- `Candidates`: source offers considered for the pod.
-- Identity method counts: how candidates were identified:
-    - trusted Universal Ad ID
-    - exact media hash
-    - audio/video fingerprint, or
-    - unresolved/unknown.
--  `Correct resolved known identities`: candidates expected to be identifiable and mapped to the correct creative.
-- `Correct resolved unknowns`: candidates intentionally lacking proof and left unresolved.
-- `Missed known identities`: candidates expected to be identifiable but left unresolved.
-- `Wrong resolved unknowns`: candidates expected to remain unknown but assigned an identity.
-- `Wrong identity assignments`: candidates assigned a known but incorrect identity.
-- `CPM`: bid rate per thousand impressions; estimated revenue is `CPM / 1000`
-  for each confirmed ad.
-- `Non-Replaceable`: protected inventory that the selector preserves even when
-  it is not the highest-CPM choice.
-- `Reservations confirmed`: selected ad reservations recorded as played
-  impressions in this simulator.
-- `Selected duration`: total selected ad duration compared with the pod target.
-- `Avoidable duplicates`: repeated known ad identities within the pod that
-  could have been avoided.
-- `Frequency cap`: max impressions/hour for 1 household and 1 canonical creative. The cap applies independently to each ad, not to pod total.
-- `Frequency cap violations`: selected ads that would exceed that household/ad
-  cap. The selection path rejects capped replaceable ads before playback.
-- `Estimated revenue`: potential gross revenue from the selected confirmed ads,
-  not a billing or realized-revenue measurement.
+- `Events`: immutable viewing, break, channel-switch, and playback events
+  generated before either strategy runs.
+- `Ad opportunities`: four available slots per processed 120-second break.
+- `Selected ads`: candidates selected before settlement; their CPM contributes
+  to estimated revenue even if playback is later canceled.
+- `Confirmed revenue`: CPM/1,000 for successfully confirmed impressions only.
+- `Delayed confirmations`: delayed playback outcomes that successfully confirm.
+  Expired delayed reservations are reported separately.
+- `Intra-pod duplicates`: repeated canonical creatives in one pod, evaluated
+  with ground-truth IDs after replay.
+- `Frequency-cap violations`: each confirmed impression beyond the configured
+  household/canonical-creative rolling-window cap, counted once.
+- `Fill rate`: selected slots divided by available slots.
+- `Incomplete pods`: breaks that could not fill all four slots after applying
+  frequency and identity constraints.
 
-| Strategy | Identity | Household history | Pod behavior |
-|---|---|---|---|
-| Baseline | Source-local IDs | None | Highest CPM only |
-| Optimized | Canonical IDs when resolved | Shared in-process store | Deduplication, caps, and CPM-aware constraints |
+Both strategies use the same reserve/confirm/cancel lifecycle. The baseline
+uses device-scoped source-local keys and does not canonical-dedupe within a
+pod. The optimized path uses household-scoped canonical keys, canonical
+intra-pod deduplication, and rolling-window caps. This isolates identity scope
+and household sharing instead of making the baseline intentionally unsafe.
 
-Report at least exact-creative repeat rate, intra-pod duplicate rate, frequency-cap violations, fill rate, confirmed estimated gross revenue, P95 decision latency, correctly resolved known identities, correctly resolved unknowns, missed known identities, wrong resolved unknowns, and wrong identity assignments.
+The simulator reports actual tradeoffs; it does not hard-code an expected
+revenue or fill improvement.
 
 ## MVP limitations
 
 - The in-memory store is correct only in one Go process and loses data on restart.
 - Fixture fingerprints model resolution proof; they are not extracted from media.
-- VAST 3.0 fixtures are controlled input, not a complete parser or live integration.
+- JSON fixtures are controlled input; VAST parsing and live integrations are
+  intentionally out of scope.
 - A greedy optimizer is intentionally simple and may not find the global optimum.
+- Decision-latency percentiles are not part of the current compact report;
+  the simulation prioritizes deterministic lifecycle and outcome metrics.
 
 ## Future distributed deployment
 

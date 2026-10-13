@@ -43,6 +43,13 @@ type Selector struct {
 	FrequencyLimit  int
 	FrequencyWindow time.Duration
 	ReservationTTL  time.Duration
+	// ReservationKey optionally chooses the frequency key for a candidate.
+	// The default is the canonical key used by the optimized selector.
+	ReservationKey func(PodRequest, ResolvedCandidate) string
+	// DedupeCanonical controls intra-pod canonical deduplication. It defaults
+	// to true; the source-local baseline disables it while retaining the same
+	// reservation lifecycle and pod constraints.
+	DedupeCanonical bool
 }
 
 // Select reserves and selects a complete pod. If the requested duration
@@ -62,6 +69,12 @@ func (s *Selector) Select(request PodRequest, candidates []ResolvedCandidate) (S
 	limit, window, ttl := s.settings()
 	result := SelectionResult{}
 	selectedCreatives := make(map[string]bool)
+	dedupeCanonical := s.DedupeCanonical
+	// Preserve the existing selector behavior for callers that do not opt into
+	// the baseline mode.
+	if !s.DedupeCanonical && s.ReservationKey == nil {
+		dedupeCanonical = true
+	}
 	reservations := make([]string, 0, len(candidates))
 	remaining := request.DurationSeconds
 
@@ -96,7 +109,7 @@ func (s *Selector) Select(request PodRequest, candidates []ResolvedCandidate) (S
 			return cancel(fmt.Errorf("protected candidate %q exceeds pod duration", candidate.Candidate.CandidateID))
 		}
 		reservationID, ok, err := s.FrequencyStore.Reserve(
-			context.Background(), request.HouseholdID, reservationCreativeID(candidate),
+			context.Background(), request.HouseholdID, s.keyFor(request, candidate),
 			int(^uint(0)>>1), window, ttl,
 		)
 		if err != nil {
@@ -141,13 +154,13 @@ func (s *Selector) Select(request PodRequest, candidates []ResolvedCandidate) (S
 			continue
 		}
 		creativeID := candidate.Creative.CanonicalCreativeID
-		if creativeID != "" && selectedCreatives[creativeID] {
+		if dedupeCanonical && creativeID != "" && selectedCreatives[creativeID] {
 			result.Decisions = append(result.Decisions, reject(candidate, "duplicate_creative"))
 			continue
 		}
 
 		reservationID, ok, err := s.FrequencyStore.Reserve(
-			context.Background(), request.HouseholdID, reservationCreativeID(candidate),
+			context.Background(), request.HouseholdID, s.keyFor(request, candidate),
 			limit, window, ttl,
 		)
 		if err != nil {
@@ -167,7 +180,7 @@ func (s *Selector) Select(request PodRequest, candidates []ResolvedCandidate) (S
 			Accepted:    true,
 			Reason:      "selected",
 		})
-		if creativeID != "" {
+		if dedupeCanonical && creativeID != "" {
 			selectedCreatives[creativeID] = true
 		}
 		remaining -= candidate.Candidate.DurationSeconds
@@ -177,6 +190,13 @@ func (s *Selector) Select(request PodRequest, candidates []ResolvedCandidate) (S
 		return cancel(fmt.Errorf("incomplete pod: %d seconds unfilled", remaining))
 	}
 	return result, nil
+}
+
+func (s *Selector) keyFor(request PodRequest, candidate ResolvedCandidate) string {
+	if s.ReservationKey != nil {
+		return s.ReservationKey(request, candidate)
+	}
+	return reservationCreativeID(candidate)
 }
 
 func (s *Selector) settings() (int, time.Duration, time.Duration) {
