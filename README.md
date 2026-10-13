@@ -21,7 +21,7 @@ The simulator reports its tradeoffs rather than assuming them. Results are gener
 |---|---|
 | Runtime | Go and the standard library |
 | Candidate input | JSON fixtures and simulated [VAST 3.0](https://www.iab.com/wp-content/uploads/2015/06/VASTv3_0.pdf) responses |
-| Identity resolution | Synthetic UniversalAdId/ACIF-style metadata, exact-media mappings, and precomputed fingerprint fixtures |
+| Identity resolution | Synthetic UniversalAdId/ACIF-style metadata, exact media hash, and fingerprint fixtures |
 | Frequency state | In-memory `map` protected by `sync.Mutex` |
 | Concurrency | Atomic reserve, confirm, and cancel operations within one process |
 | Simulation | Seeded, reproducible baseline-versus-optimized runs |
@@ -82,8 +82,7 @@ These fields show different kinds of ad ID proof. They aren't interchangeable. I
 - `fixture_fingerprint`: Audio/video fingerprinting creates unique mathematical signatures based on how media actually looks and sounds, not relying on file metadata or raw bits. This lets us ID ads even if their files are resized, compressed, or transcoded. Audio fingerprints could use [Chromaprint](https://acoustid.org/chromaprint). Video fingerprints could use [VideoHash](https://github.com/akamhy/videohash).
 
 This resolver should use proof in descending order of trust:
-`universal_ad_id` -> exact media proof -> `fixture_fingerprint` ->
-unknown. A source-local ID, advertiser, or product match does not mean 2 ads are the same.
+`universal_ad_id` -> exact media hash -> `fixture_fingerprint` -> unknown. A source-local ID, advertiser, or product match does not mean 2 ads are the same.
 
 The fixture resolver loads `data/identity_registry.json`, a separate trusted
 mapping from opaque proof values to canonical IDs. It never derives an answer
@@ -139,7 +138,7 @@ CPM is a bid rate, not per-impression revenue. Estimated gross revenue for a con
 |---|---|
 | Synthetic catalog | Deterministic JSON candidates for multiple sources and canonical creatives |
 | VAST fixtures | Simulated VAST 3.0 inline responses; no live ad calls |
-| Creative resolution | Known ID, exact-media, precomputed fingerprint, or unknown |
+| Creative resolution | Known Universal Ad ID, exact media hash, precomputed fingerprint, or unknown |
 | Intra-pod deduplication | Avoid exact-creative duplicates when eligible alternatives exist |
 | Household caps | Rolling-window state across simulated channels and devices |
 | Atomic reservations | `map` + `sync.Mutex`, reservation TTLs, confirmation, and cancellation |
@@ -198,12 +197,80 @@ go run ./cmd/simulator -seed 20261011
 
 Both strategies use the same fixtures and seed.
 
+### Sample simulator output:
+
+```text
+AdPod Lab Simulator
+  Seed:               20261011
+  Creatives (unique): 12
+  Candidates:         30
+
+Resolved Identities for Candidates:
+  Universal Ad IDs:          9
+  Exact Media Hash:          8
+  Audio/Video Fingerprint:  10
+  Unknown:                   3
+Identity resolution outcomes:
+  Correct resolved known identities:     27
+  Correct resolved unknowns:              3
+  Missed known identities:                0
+  Wrong resolved unknowns:                0
+  Wrong identity assignments:             0
+
+Candidates:       30
+Household:        household-001
+Pod duration:     120 seconds
+Frequency cap:    3 impressions/hour (per household, per canonical creative)
+
+Ads selected for pod:
+  Slot 1: candidate-030 unresolved     CPM $22.55   Non-Replaceable
+  Slot 2: candidate-027 creative-004   CPM $39.03
+  Slot 3: candidate-011 creative-003   CPM $38.06
+  Slot 4: candidate-007 creative-002   CPM $37.55
+
+Reservations confirmed:   4
+Selected duration:        120 / 120 seconds
+Avoidable duplicates:     0 ads repeated in pod
+Frequency cap violations: 0 selected ads in pod would exceed cap
+Estimated revenue:        $0.1372
+```
+
+### Output terms:
+
+- `Seed`: fixed value that makes generated simulation choices reproducible.
+- `Creatives (unique)`: distinct canonical creative definitions in the catalog.
+- `Candidates`: source offers considered for the pod.
+- Identity method counts: how candidates were identified:
+    - trusted Universal Ad ID
+    - exact media hash
+    - audio/video fingerprint, or
+    - unresolved/unknown.
+-  `Correct resolved known identities`: candidates expected to be identifiable and mapped to the correct creative.
+- `Correct resolved unknowns`: candidates intentionally lacking proof and left unresolved.
+- `Missed known identities`: candidates expected to be identifiable but left unresolved.
+- `Wrong resolved unknowns`: candidates expected to remain unknown but assigned an identity.
+- `Wrong identity assignments`: candidates assigned a known but incorrect identity.
+- `CPM`: bid rate per thousand impressions; estimated revenue is `CPM / 1000`
+  for each confirmed ad.
+- `Non-Replaceable`: protected inventory that the selector preserves even when
+  it is not the highest-CPM choice.
+- `Reservations confirmed`: selected ad reservations recorded as played
+  impressions in this simulator.
+- `Selected duration`: total selected ad duration compared with the pod target.
+- `Avoidable duplicates`: repeated known ad identities within the pod that
+  could have been avoided.
+- `Frequency cap`: max impressions/hour for 1 household and 1 canonical creative. The cap applies independently to each ad, not to pod total.
+- `Frequency cap violations`: selected ads that would exceed that household/ad
+  cap. The selection path rejects capped replaceable ads before playback.
+- `Estimated revenue`: potential gross revenue from the selected confirmed ads,
+  not a billing or realized-revenue measurement.
+
 | Strategy | Identity | Household history | Pod behavior |
 |---|---|---|---|
 | Baseline | Source-local IDs | None | Highest CPM only |
 | Optimized | Canonical IDs when resolved | Shared in-process store | Deduplication, caps, and CPM-aware constraints |
 
-Report at least exact-creative repeat rate, intra-pod duplicate rate, frequency-cap violations, fill rate, confirmed estimated gross revenue, P95 decision latency, known-identity precision/recall, and expected-unknown handling. Do not count a deliberately unknowable candidate as a false negative.
+Report at least exact-creative repeat rate, intra-pod duplicate rate, frequency-cap violations, fill rate, confirmed estimated gross revenue, P95 decision latency, correctly resolved known identities, correctly resolved unknowns, missed known identities, wrong resolved unknowns, and wrong identity assignments.
 
 ## MVP limitations
 

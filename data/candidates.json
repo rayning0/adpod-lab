@@ -249,7 +249,7 @@
     "duration_seconds": 30,
     "cpm": 30.64,
     "inventory_owner": "source-c-inventory",
-    "replaceable": false,
+    "replaceable": true,
     "fixture_scenario": "fixture_fingerprint"
   },
   {

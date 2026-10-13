@@ -81,16 +81,15 @@ func (r *Resolver) ResolveAll(candidates []model.Candidate) []model.ResolvedCrea
 	return resolved
 }
 
-// ResolutionMetrics reports candidate-level precision and recall against
-// canonical IDs. Unresolved candidates count as false negatives.
+// ResolutionMetrics reports candidate-level identity outcomes against
+// canonical IDs. The categories are mutually exclusive for each candidate.
 type ResolutionMetrics struct {
-	TruePositives    int
-	FalsePositives   int
-	FalseNegatives   int
-	CorrectUnknowns  int
-	ExpectedUnknowns int
-	Precision        float64
-	Recall           float64
+	CorrectResolvedKnownIdentities int
+	CorrectResolvedUnknowns        int
+	MissedKnownIdentities          int
+	WrongResolvedUnknowns          int
+	WrongIdentityAssignments       int
+	ExpectedUnknowns               int
 }
 
 // Evaluate compares predictions with test-only ground truth.
@@ -108,27 +107,19 @@ func Evaluate(predictions []model.ResolvedCreative, groundTruth model.Resolution
 		if !known {
 			metrics.ExpectedUnknowns++
 			if prediction.CanonicalCreativeID == "" {
-				metrics.CorrectUnknowns++
+				metrics.CorrectResolvedUnknowns++
 			} else {
-				metrics.FalsePositives++
+				metrics.WrongResolvedUnknowns++
 			}
 			continue
 		}
 		if prediction.CanonicalCreativeID == expected && prediction.CanonicalCreativeID != "" {
-			metrics.TruePositives++
+			metrics.CorrectResolvedKnownIdentities++
+		} else if prediction.CanonicalCreativeID == "" {
+			metrics.MissedKnownIdentities++
 		} else {
-			metrics.FalseNegatives++
-			if prediction.CanonicalCreativeID != "" {
-				metrics.FalsePositives++
-			}
+			metrics.WrongIdentityAssignments++
 		}
-	}
-	if metrics.TruePositives+metrics.FalsePositives > 0 {
-		metrics.Precision = float64(metrics.TruePositives) /
-			float64(metrics.TruePositives+metrics.FalsePositives)
-	}
-	if total := metrics.TruePositives + metrics.FalseNegatives; total > 0 {
-		metrics.Recall = float64(metrics.TruePositives) / float64(total)
 	}
 	return metrics
 }

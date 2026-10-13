@@ -41,8 +41,9 @@ func TestFixtureRegistryResolvesKnownCandidatesAndAbstainsFromExpectedUnknowns(t
 		t.Fatal(err)
 	}
 	metrics := Evaluate(NewResolver(registry).ResolveAll(candidates), expectations)
-	if metrics.TruePositives != 27 || metrics.FalsePositives != 0 || metrics.FalseNegatives != 0 ||
-		metrics.CorrectUnknowns != 3 || metrics.ExpectedUnknowns != 3 {
+	if metrics.CorrectResolvedKnownIdentities != 27 || metrics.MissedKnownIdentities != 0 ||
+		metrics.CorrectResolvedUnknowns != 3 || metrics.WrongResolvedUnknowns != 0 ||
+		metrics.WrongIdentityAssignments != 0 || metrics.ExpectedUnknowns != 3 {
 		t.Fatalf("fixture metrics = %+v, want 27 correct known resolutions and 3 correct unknowns", metrics)
 	}
 }
@@ -136,8 +137,9 @@ func TestEvaluateSeparatesExpectedUnknowns(t *testing.T) {
 		Resolved:            map[string]string{"u": "creative-001", "m": "creative-002", "f": "creative-001"},
 		UnknownCandidateIDs: []string{"x"},
 	})
-	if metrics.TruePositives != 3 || metrics.FalseNegatives != 0 || metrics.CorrectUnknowns != 1 ||
-		metrics.ExpectedUnknowns != 1 || metrics.Precision != 1 || metrics.Recall != 1 {
+	if metrics.CorrectResolvedKnownIdentities != 3 || metrics.MissedKnownIdentities != 0 ||
+		metrics.CorrectResolvedUnknowns != 1 || metrics.ExpectedUnknowns != 1 ||
+		metrics.WrongResolvedUnknowns != 0 || metrics.WrongIdentityAssignments != 0 {
 		t.Fatalf("metrics = %+v, want three known resolutions and one correct unknown", metrics)
 	}
 }
