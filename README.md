@@ -61,11 +61,14 @@ No Docker, Redis, external exchange, video processing, or streaming integration 
 
 The frequency store is accessed only through an interface. This keeps the optimizer independent of storage and makes a later shared-state implementation a contained change.
 
-The simulator generates one immutable event stream, then replays it through
-two fresh stores. The baseline uses device-scoped, source-local keys and the
-optimized strategy uses household-scoped canonical keys. Both strategies use
-the same reservation lifecycle, injected simulated clock, candidate pool, and
-playback outcomes.
+The simulator first creates one complete, read-only viewing history. It then
+plays that exact history twice, starting each run with separate exposure
+records. The baseline remembers ads separately for each device and trusts the
+ID supplied by each ad source. The optimized run recognizes when different
+source IDs represent the same commercial and shares that history across the
+household's devices. Both runs use the same candidate ads, simulated clock,
+and playback results, so the comparison changes the ad-selection rules rather
+than the viewing behavior.
 
 ```go
 type FrequencyStore interface {
@@ -127,13 +130,36 @@ advertiser and product metadata.
 
 ## Decision flow
 
-1. Load the fixed 30-candidate catalog and trusted identity registry.
-2. Generate a deterministic viewing timeline from the supplied seed.
-3. Resolve candidates without consulting evaluation-only ground truth.
-4. Replay the same timeline independently for the baseline and optimized strategies.
-5. Reserve capacity, select a protected 120-second pod, and settle each slot.
-6. Apply cancellations and confirmations at their simulated timestamps.
-7. Evaluate canonical duplicates and cap violations afterward using ground truth.
+1. Load the 30 fixed ad offers and the trusted registry used to match
+   source-specific ad IDs to the same underlying commercial.
+2. Use the seed to create a repeatable viewing history: households, devices,
+   channels, ad breaks, channel changes, and playback results.
+3. Give every break the same 30 ad offers. The selector uses the trusted
+   registry, but never uses the evaluation-only answer key.
+4. Replay the exact same history once with the baseline rules and once with
+   the optimized rules. Each run starts with its own empty exposure store plus
+   the same synthetic prior viewing history.
+5. For each break, preserve protected inventory, fill a 120-second pod, and
+   temporarily reserve each selected ad.
+6. At the scheduled simulated time, record each selected ad as confirmed,
+   canceled, delayed, or failed to settle.
+7. After both replays, use the separate answer key to measure repeated
+   commercials and household frequency-cap violations.
+
+For one illustrative household, the simulator may create:
+
+- `household-001`
+- `household-001-device-01` watching `channel-02`
+- `household-001-device-02` watching `channel-05`
+- A break on device 01 at simulated 00:12, followed by a break on device 02
+  at simulated 00:25
+- Four selected 30-second slots in each 120-second break
+- A source-local offer such as `candidate-025` and another offer such as
+  `candidate-024` that the trusted registry identifies as the same
+  canonical commercial
+
+The exact devices, channels, and times depend on the seed, but the IDs and
+ordering are always reproducible.
 
 CPM is a bid rate, not per-impression revenue. Estimated gross revenue for a confirmed impression is `CPM / 1000`.
 
@@ -204,10 +230,25 @@ go run ./cmd/simulator \
   -minutes 120
 ```
 
-The default run uses 20 households, up to three devices per household, five
-channels, and two simulated hours. Use `-households 100` to run the larger
-scenario. The seed controls viewing behavior and playback outcomes; the
-committed candidate fixtures remain the shared inventory for both strategies.
+The default run creates 20 households, gives each household between one and
+three devices, chooses among five fictional channels, and simulates two hours.
+Use `-households 100` to run the larger scenario. The seed controls the
+generated viewing behavior and playback outcomes; the committed 30 candidate
+fixtures remain the shared inventory for both strategies.
+
+For example, if device 01 has already shown canonical commercial
+`creative-003`, the baseline only records that exposure under device 01 and
+the source-local ID it received. Device 02 can therefore select another
+source's offer for the same commercial. The optimized run translates both
+offers to `creative-003`, shares the exposure across the household, and can
+reject the second offer when the rolling frequency limit is reached. It also
+avoids putting two offers for the same recognized commercial in one pod.
+
+The optimized run therefore adds two kinds of precision: better identity
+precision across ad sources, and better household-level exposure accounting.
+Those protections can reduce fill or revenue when no eligible alternative
+remains; the simulator reports that tradeoff instead of assuming an
+improvement.
 
 ### Sample simulator output:
 
@@ -223,10 +264,10 @@ Selected ads                                     1444           1332
 Confirmed impressions                            1222           1117
 Canceled impressions                              151            146
 Delayed confirmations                              62             58
-Expired/unknown settlements                        71             69
+Failed settlements (aggregate)                     71             69
 Incomplete pods                                     0             28
 Intra-pod duplicates                              226              0
-Frequency-cap violations                          613              0
+Frequency-cap violations                          626              0
 Estimated revenue                            $48.8221       $41.4609
 Confirmed revenue                            $41.1716       $34.6367
 Fill rate                                     100.00%         92.24%
@@ -235,28 +276,64 @@ Unresolved identities                               3              3
 
 ### Output terms:
 
-- `Seed`: fixed value that makes generated simulation choices reproducible.
-- `Events`: immutable viewing, break, channel-switch, and playback events
-  generated before either strategy runs.
-- `Ad opportunities`: four available slots per processed 120-second break.
-- `Selected ads`: candidates selected before settlement; their CPM contributes
-  to estimated revenue even if playback is later canceled.
-- `Confirmed revenue`: CPM/1,000 for successfully confirmed impressions only.
-- `Delayed confirmations`: delayed playback outcomes that successfully confirm.
-  Expired delayed reservations are reported separately.
-- `Intra-pod duplicates`: repeated canonical creatives in one pod, evaluated
-  with ground-truth IDs after replay.
-- `Frequency-cap violations`: each confirmed impression beyond the configured
-  household/canonical-creative rolling-window cap, counted once.
-- `Fill rate`: selected slots divided by available slots.
-- `Incomplete pods`: breaks that could not fill all four slots after applying
-  frequency and identity constraints.
+- `AdPod Lab Simulator`: the local program that creates the viewing history,
+  makes both ad decisions, and prints this comparison.
+- `Seed`: the starting number for the repeatable scenario generator. The same
+  seed and flags produce the same households, events, outcomes, and report.
+- `Households`: the number of synthetic viewer homes created for the run.
+- `Devices: <=3`: each household receives one, two, or three simulated
+  devices; three is the maximum set by the `-devices` flag.
+- `Channels`: the number of fictional channels available to those devices.
+- `Minutes`: the length of simulated viewing time. This is simulated time, so
+  a 120-minute run completes quickly.
+- `Candidates`: the number of ad offers available to every break. The
+  candidate pool contains 30 offers from multiple simulated sources.
+- `Events`: the generated viewing actions, ad-break requests, channel changes,
+  and playback callbacks. They are created once and shared by both runs.
+- `Metric`: one measured result. The `baseline` and `optimized` columns show
+  the same result for the two rule sets.
+- `Processed breaks`: the number of ad breaks that occurred in the generated
+  viewing history.
+- `Ad opportunities`: the number of available ad slots. Each 120-second break
+  has four 30-second slots, so 361 breaks produce 1,444 opportunities.
+- `Selected ads`: the number of offers placed into pods before playback is
+  settled. A selected ad can later be canceled or fail to settle.
+- `Confirmed impressions`: selected ads whose playback was successfully
+  confirmed.
+- `Canceled impressions`: selected ads canceled before confirmation because
+  the simulated viewer left or changed channels.
+- `Delayed confirmations`: confirmations that arrived later than the normal
+  playback callback but still arrived before the reservation expired.
+- `Failed settlements (aggregate)`: selected ads whose later callback could not
+  be applied, usually because the reservation expired or was unknown. The
+  current store interface combines those causes.
+- `Incomplete pods`: breaks where the rules could not fill all four slots.
+- `Intra-pod duplicates`: repeated versions of the same underlying commercial
+  within one pod. This is evaluated with the trusted ground-truth mapping,
+  not only with the selector's prediction.
+- `Avoidable / protected duplicates`: the report separates duplicates that
+  could have been avoided from duplicates caused by protected inventory.
+- `Frequency-cap violations`: confirmed impressions beyond the configured
+  limit for one household and one commercial during the rolling time window.
+  Each excess impression is counted once, not every possible pair.
+- `Estimated revenue`: the potential gross value of every selected ad,
+  calculated as its CPM divided by 1,000, whether or not it is confirmed.
+- `Confirmed revenue`: the gross value of confirmed impressions only, using
+  CPM divided by 1,000.
+- `Fill rate`: the percentage of available slots that received a selected ad.
+- `Unresolved identities`: candidate offers for which the trusted registry
+  could not confidently identify the underlying commercial.
 
-Both strategies use the same reserve/confirm/cancel lifecycle. The baseline
-uses device-scoped source-local keys and does not canonical-dedupe within a
-pod. The optimized path uses household-scoped canonical keys, canonical
-intra-pod deduplication, and rolling-window caps. This isolates identity scope
-and household sharing instead of making the baseline intentionally unsafe.
+The baseline is the control experiment. It still safely reserves, confirms,
+and cancels ads, but it treats each device and each source's ad ID separately.
+It can therefore select two source offers that are actually the same
+commercial, and an exposure on device 01 does not affect device 02.
+
+The optimized run uses the same lifecycle, but adds trusted cross-source
+identity matching, household-wide exposure history, rolling-window frequency
+caps, and avoidance of recognized duplicates within a pod. This makes the
+comparison fair: the optimized run is more precise about identity and
+household history, not simply better because the baseline was made unsafe.
 
 The simulator reports actual tradeoffs; it does not hard-code an expected
 revenue or fill improvement.

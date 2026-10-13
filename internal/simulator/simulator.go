@@ -86,12 +86,14 @@ func DefaultConfig() Config {
 
 // Metrics is the evaluation report for one strategy.
 type Metrics struct {
-	ProcessedBreaks                int
-	AdOpportunities                int
-	SelectedAds                    int
-	ConfirmedImpressions           int
-	CanceledImpressions            int
-	DelayedConfirmations           int
+	ProcessedBreaks      int
+	AdOpportunities      int
+	SelectedAds          int
+	ConfirmedImpressions int
+	CanceledImpressions  int
+	DelayedConfirmations int
+	// This combines late/expired and unknown callback failures because the
+	// FrequencyStore interface exposes one unknown-reservation error for both.
 	ExpiredOrUnknownSettlements    int
 	IncompletePods                 int
 	IntraPodDuplicates             int
@@ -299,7 +301,7 @@ func replay(name string, cfg Config, events []ViewingEvent, candidates []model.C
 	for i, prediction := range predictions {
 		resolved[prediction.CandidateID] = pod.ResolvedCandidate{Candidate: candidates[i], Creative: prediction}
 	}
-	seedInitialHistory(store, resolved, events, optimized, simNow)
+	confirmed := seedInitialHistory(store, resolved, events, optimized, simNow)
 	report := Metrics{}
 	for _, prediction := range predictions {
 		if prediction.CanonicalCreativeID == "" {
@@ -307,7 +309,6 @@ func replay(name string, cfg Config, events []ViewingEvent, candidates []model.C
 		}
 	}
 	pending := make(map[string]pendingSelection)
-	confirmed := make([]confirmedAd, 0)
 	for _, event := range events {
 		simNow = event.Timestamp
 		switch event.EventType {
@@ -342,7 +343,7 @@ func replay(name string, cfg Config, events []ViewingEvent, candidates []model.C
 				report.EstimatedRevenue += selected.Candidate.CPM / 1000
 				pending[pendingKey(event.OpportunityID, slot)] = pendingSelection{result.ReservationIDs[slot], selected}
 			}
-			countPodDuplicates(&report, result.Selected)
+			countPodDuplicates(&report, result.Selected, cfg.GroundTruth)
 		case EventPlaybackCancel, EventPlaybackConfirm, EventPlaybackDelayed:
 			pendingAd, ok := pending[pendingKey(event.OpportunityID, event.Slot)]
 			if !ok {
@@ -381,8 +382,9 @@ func pendingKey(opportunity string, slot int) string {
 	return fmt.Sprintf("%s/%d", opportunity, slot)
 }
 
-func seedInitialHistory(store *frequency.InMemoryFrequencyStore, resolved map[string]pod.ResolvedCandidate, events []ViewingEvent, optimized bool, at time.Time) {
+func seedInitialHistory(store *frequency.InMemoryFrequencyStore, resolved map[string]pod.ResolvedCandidate, events []ViewingEvent, optimized bool, at time.Time) []confirmedAd {
 	seen := make(map[string]bool)
+	confirmed := make([]confirmedAd, 0)
 	var historyCandidate pod.ResolvedCandidate
 	for _, candidate := range resolved {
 		if candidate.Creative.CanonicalCreativeID != "creative-003" {
@@ -410,14 +412,19 @@ func seedInitialHistory(store *frequency.InMemoryFrequencyStore, resolved map[st
 		id, ok, _ := store.Reserve(context.Background(), household, key, FrequencyLimit, FrequencyWindow, ReservationTTL)
 		if ok {
 			_ = store.Confirm(context.Background(), id, at.Add(-30*time.Minute))
+			confirmed = append(confirmed, confirmedAd{
+				at: at.Add(-30 * time.Minute), household: event.HouseholdID,
+				candidate: selected.Candidate,
+			})
 		}
 	}
+	return confirmed
 }
 
-func countPodDuplicates(report *Metrics, selected []pod.ResolvedCandidate) {
+func countPodDuplicates(report *Metrics, selected []pod.ResolvedCandidate, groundTruth model.ResolutionExpectations) {
 	seen := make(map[string]bool)
 	for _, candidate := range selected {
-		id := candidate.Creative.CanonicalCreativeID
+		id := groundTruth.Resolved[candidate.Candidate.CandidateID]
 		if id == "" {
 			continue
 		}

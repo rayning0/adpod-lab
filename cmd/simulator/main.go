@@ -51,7 +51,7 @@ func printReport(baseline, optimized simulator.StrategyReport) {
 	fmt.Printf("%-38s %14s %14s\n", "Confirmed impressions", formatInt(baseline.Metrics.ConfirmedImpressions), formatInt(optimized.Metrics.ConfirmedImpressions))
 	fmt.Printf("%-38s %14s %14s\n", "Canceled impressions", formatInt(baseline.Metrics.CanceledImpressions), formatInt(optimized.Metrics.CanceledImpressions))
 	fmt.Printf("%-38s %14s %14s\n", "Delayed confirmations", formatInt(baseline.Metrics.DelayedConfirmations), formatInt(optimized.Metrics.DelayedConfirmations))
-	fmt.Printf("%-38s %14s %14s\n", "Expired/unknown settlements", formatInt(baseline.Metrics.ExpiredOrUnknownSettlements), formatInt(optimized.Metrics.ExpiredOrUnknownSettlements))
+	fmt.Printf("%-38s %14s %14s\n", "Failed settlements (aggregate)", formatInt(baseline.Metrics.ExpiredOrUnknownSettlements), formatInt(optimized.Metrics.ExpiredOrUnknownSettlements))
 	fmt.Printf("%-38s %14s %14s\n", "Incomplete pods", formatInt(baseline.Metrics.IncompletePods), formatInt(optimized.Metrics.IncompletePods))
 	fmt.Printf("%-38s %14s %14s\n", "Intra-pod duplicates", formatInt(baseline.Metrics.IntraPodDuplicates), formatInt(optimized.Metrics.IntraPodDuplicates))
 	fmt.Printf("%-38s %14s %14s\n", "Avoidable / protected duplicates", fmt.Sprintf("%d / %d", baseline.Metrics.AvoidableIntraPodDuplicates, baseline.Metrics.UnavoidableProtectedDuplicates), fmt.Sprintf("%d / %d", optimized.Metrics.AvoidableIntraPodDuplicates, optimized.Metrics.UnavoidableProtectedDuplicates))

@@ -165,6 +165,47 @@ func TestCapEvaluationCountsEachExcessOnce(t *testing.T) {
 	}
 }
 
+func TestGroundTruthDuplicateEvaluationIgnoresResolverMisses(t *testing.T) {
+	report := Metrics{}
+	selected := []pod.ResolvedCandidate{
+		{
+			Candidate: model.Candidate{CandidateID: "source-a"},
+			Creative:  model.ResolvedCreative{CandidateID: "source-a", CanonicalCreativeID: "wrong-a"},
+		},
+		{
+			Candidate: model.Candidate{CandidateID: "source-b"},
+			Creative:  model.ResolvedCreative{CandidateID: "source-b"},
+		},
+	}
+	groundTruth := model.ResolutionExpectations{Resolved: map[string]string{
+		"source-a": "creative-001",
+		"source-b": "creative-001",
+	}}
+	countPodDuplicates(&report, selected, groundTruth)
+	if report.IntraPodDuplicates != 1 {
+		t.Fatalf("ground-truth duplicates = %d, want 1", report.IntraPodDuplicates)
+	}
+}
+
+func TestDelayedConfirmationAfterTTLDoesNotCreateRevenue(t *testing.T) {
+	now := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	store, err := frequency.NewInMemoryFrequencyStore(1, time.Hour, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	reservation, ok, err := store.Reserve(context.Background(), "household-001", "creative-001", 1, time.Hour, 5*time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("reserve = %q, %t, %v", reservation, ok, err)
+	}
+	now = now.Add(5 * time.Minute)
+	if err := store.Confirm(context.Background(), reservation, now); err != frequency.ErrUnknownReservation {
+		t.Fatalf("late confirmation error = %v, want ErrUnknownReservation", err)
+	}
+	if _, ok, err := store.Reserve(context.Background(), "household-001", "creative-001", 1, time.Hour, time.Minute); err != nil || !ok {
+		t.Fatalf("expired reservation did not release capacity: ok=%t err=%v", ok, err)
+	}
+}
+
 func TestRevenueAccountingSeparatesSelectedAndConfirmed(t *testing.T) {
 	report, err := Run(Config{
 		Seed: 9, Households: 2, MaxDevices: 1, Channels: 2, Minutes: 45,
